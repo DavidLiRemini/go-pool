@@ -1,2 +1,2 @@
-# go_pool
+# go-pool
 golang连接池
