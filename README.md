@@ -7,11 +7,11 @@ A golang universal network connection pool.
 - More configurable, The connection supports setting the maximum idle time, the timeout connection will be closed and discarded, which can avoid the problem of automatic connection failure when idle
 - Support user setting `ping` method, used to check the connectivity of connection, invalid connection will be discarded
 - Support connection waiting, When the connection pool is full, support for connection waiting (like the go db connection pool)
+- Support `Connect` method, when need manually create a connection 
 
 ## Basic Usage:
 
 ```go
-
 //factory Specify the method to create the connection
 factory := func() (interface{}, error) { return net.Dial("tcp", "127.0.0.1:4000") }
 
@@ -52,12 +52,11 @@ p.Release()
 //View the number of connections in the current connection pool
 current := p.Len()
 
-//create new connection
+//manually create new connection
 p.Connect()
 
 
 ```
-
 
 #### Remarks:
 The connection pool implementation refers to pool [https://github.com/silenceper/pool](https://github.com/silenceper/pool) , thanks.
