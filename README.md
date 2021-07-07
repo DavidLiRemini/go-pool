@@ -1,5 +1,4 @@
 # go-pool
-golang连接池
 A golang universal network connection pool.
 
 ## Feature：
@@ -61,7 +60,7 @@ p.Connect()
 
 
 #### Remarks:
-The connection pool implementation refers to pool [https://github.com/fatih/pool](https://github.com/fatih/pool) , thanks.
+The connection pool implementation refers to pool [https://github.com/silenceper/pool](https://github.com/silenceper/pool) , thanks.
 
 
 ## License
