@@ -15,9 +15,9 @@ var (
 // Config 连接池相关配置
 type Config struct {
 	//连接池中拥有的最小连接数
-	InitialCap int
+	MinPoolSize int
 	//最大并发存活连接数
-	MaxCap int
+	MaxPoolSize int
 	//最大空闲连接
 	MaxIdle int
 	//生成连接的方法
@@ -54,7 +54,7 @@ type idleConn struct {
 
 // NewChannelPool 初始化连接
 func NewChannelPool(poolConfig *Config) (Pool, error) {
-	if !(poolConfig.InitialCap <= poolConfig.MaxIdle && poolConfig.MaxCap >= poolConfig.MaxIdle && poolConfig.InitialCap >= 0) {
+	if !(poolConfig.MinPoolSize <= poolConfig.MaxIdle && poolConfig.MaxPoolSize >= poolConfig.MaxIdle && poolConfig.MinPoolSize >= 0) {
 		return nil, errors.New("invalid capacity settings")
 	}
 	if poolConfig.Factory == nil {
@@ -69,15 +69,15 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 		factory:      poolConfig.Factory,
 		close:        poolConfig.Close,
 		idleTimeout:  poolConfig.IdleTimeout,
-		maxActive:    poolConfig.MaxCap,
-		openingConns: poolConfig.InitialCap,
+		maxActive:    poolConfig.MaxPoolSize,
+		openingConns: poolConfig.MinPoolSize,
 	}
 
 	if poolConfig.Ping != nil {
 		c.ping = poolConfig.Ping
 	}
 
-	for i := 0; i < poolConfig.InitialCap; i++ {
+	for i := 0; i < poolConfig.MinPoolSize; i++ {
 		conn, err := c.factory()
 		if err != nil {
 			c.Release()
