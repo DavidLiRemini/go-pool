@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -97,8 +98,7 @@ func (c *channelPool) getConns() chan *idleConn {
 	return conns
 }
 
-// Get 从pool中取一个连接
-func (c *channelPool) Get() (interface{}, error) {
+func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 	conns := c.getConns()
 	if conns == nil {
 		return nil, ErrClosed
@@ -108,6 +108,12 @@ func (c *channelPool) Get() (interface{}, error) {
 		case wrapConn := <-conns:
 			if wrapConn == nil {
 				return nil, ErrClosed
+			}
+			// 额外检查一次是否context过期了，因为当多个条件满足时`select`可能会随机选择一个
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			default:
 			}
 			//判断是否超时，超时则丢弃
 			if timeout := c.idleTimeout; timeout > 0 {
@@ -125,16 +131,26 @@ func (c *channelPool) Get() (interface{}, error) {
 				}
 			}
 			return wrapConn.conn, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		default:
 			c.mu.Lock()
 			if c.openingConns >= c.maxActive {
 				req := make(chan connReq, 1)
 				c.connQueue = append(c.connQueue, req)
 				c.mu.Unlock()
-				ret, ok := <-req
-				if !ok {
-					return nil, ErrMaxActiveConnReached
+				var ret connReq
+				select {
+				case ret = <-req:
+				case <-ctx.Done():
+					return nil, ctx.Err()
 				}
+				//不返回错误，暂时注释掉
+				//ret, ok := <-req
+				//if !ok {
+				//	return nil, ErrMaxActiveConnReached
+				//}
+
 				if timeout := c.idleTimeout; timeout > 0 {
 					if ret.idleConn.t.Add(timeout).Before(time.Now()) {
 						//丢弃并关闭该连接
@@ -158,6 +174,11 @@ func (c *channelPool) Get() (interface{}, error) {
 			return conn, nil
 		}
 	}
+}
+
+// Get 从pool中取一个连接
+func (c *channelPool) Get() (interface{}, error) {
+	return c.GetContext(context.Background())
 }
 
 func (c *channelPool) Connect() (interface{}, error) {
