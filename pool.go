@@ -1,6 +1,9 @@
 package pool
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 var (
 	//ErrClosed 连接池已经关闭Error
@@ -10,6 +13,8 @@ var (
 // Pool 基本方法
 type Pool interface {
 	Get() (interface{}, error)
+	
+	GetContext(context.Context)(interface{}, error)
 
 	Put(interface{}) error
 
