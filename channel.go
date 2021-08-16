@@ -112,7 +112,7 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 			// 额外检查一次是否context过期了，因为当多个条件满足时`select`可能会随机选择一个
 			select {
 			case <-ctx.Done():
-				return 0, ctx.Err()
+				return nil, ctx.Err()
 			default:
 			}
 			//判断是否超时，超时则丢弃
