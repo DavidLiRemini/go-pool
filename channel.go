@@ -143,7 +143,8 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 				select {
 				case ret = <-req:
 				case <-ctx.Done():
-					//FIXME 超时把已经放队列的去掉,有没有优雅的写法？
+					//log.Printf("getConn ctx deadline exceed, before queue:%+v", c.connQueue)
+					//FIXME 超时把已经放队列的去掉, 有没有优雅的写法？
 					c.mu.Lock()
 					var nQueue []chan connReq
 					for _, v := range c.connQueue {
@@ -154,6 +155,7 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 					}
 					c.connQueue = nQueue
 					c.mu.Unlock()
+					//log.Printf("getConn ctx deadline exceed, after queue:%+v", c.connQueue)
 					return nil, ctx.Err()
 				}
 				//不返回错误，暂时注释掉
