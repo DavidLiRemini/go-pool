@@ -111,9 +111,9 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 			}
 			// 额外检查一次是否context过期了，因为当多个条件满足时`select`可能会随机选择一个
 			select {
+			default:
 			case <-ctx.Done():
 				return wrapConn.conn, ctx.Err()
-			default:
 			}
 			//判断是否超时，超时则丢弃
 			if timeout := c.idleTimeout; timeout > 0 {
