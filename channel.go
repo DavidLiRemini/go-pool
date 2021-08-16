@@ -143,6 +143,17 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 				select {
 				case ret = <-req:
 				case <-ctx.Done():
+					//FIXME 超时把已经放队列的去掉,有没有优雅的写法？
+					c.mu.Lock()
+					var nQueue []chan connReq
+					for _, v := range c.connQueue {
+						if v == req {
+							continue
+						}
+						nQueue = append(nQueue, v)
+					}
+					c.connQueue = nQueue
+					c.mu.Unlock()
 					return nil, ctx.Err()
 				}
 				//不返回错误，暂时注释掉
