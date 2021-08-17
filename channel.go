@@ -46,6 +46,8 @@ type channelPool struct {
 	maxActive                int
 	openingConns             int
 	connQueue                []chan connReq
+	waitingCount             int
+	waitingQueue             chan connReq
 }
 
 type idleConn struct {
@@ -72,6 +74,7 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 		idleTimeout:  poolConfig.IdleTimeout,
 		maxActive:    poolConfig.MaxPoolSize,
 		openingConns: poolConfig.MinPoolSize,
+		waitingQueue: make(chan connReq, 1024),
 	}
 
 	if poolConfig.Ping != nil {
@@ -136,26 +139,15 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 		default:
 			c.mu.Lock()
 			if c.openingConns >= c.maxActive {
-				req := make(chan connReq, 1)
-				c.connQueue = append(c.connQueue, req)
+				c.waitingCount++
 				c.mu.Unlock()
 				var ret connReq
 				select {
-				case ret = <-req:
+				case ret = <-c.waitingQueue:
 				case <-ctx.Done():
-					//log.Printf("getConn ctx deadline exceed, before queue:%+v", c.connQueue)
-					//FIXME 超时把已经放队列的去掉, 有没有优雅的写法？
 					c.mu.Lock()
-					var nQueue []chan connReq
-					for _, v := range c.connQueue {
-						if v == req {
-							continue
-						}
-						nQueue = append(nQueue, v)
-					}
-					c.connQueue = nQueue
+					c.waitingCount--
 					c.mu.Unlock()
-					//log.Printf("getConn ctx deadline exceed, after queue:%+v", c.connQueue)
 					return nil, ctx.Err()
 				}
 				//不返回错误，暂时注释掉
@@ -221,14 +213,11 @@ func (c *channelPool) Put(conn interface{}) error {
 		c.mu.Unlock()
 		return c.Close(conn)
 	}
-
-	if l := len(c.connQueue); l > 0 {
-		req := c.connQueue[0]
-		copy(c.connQueue, c.connQueue[1:])
-		c.connQueue = c.connQueue[:l-1]
-		req <- connReq{
+	if c.waitingCount > 0 {
+		c.waitingQueue <- connReq{
 			idleConn: &idleConn{conn: conn, t: time.Now()},
 		}
+		c.waitingCount--
 		c.mu.Unlock()
 		return nil
 	} else {
