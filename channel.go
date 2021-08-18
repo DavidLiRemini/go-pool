@@ -45,7 +45,6 @@ type channelPool struct {
 	idleTimeout, waitTimeOut time.Duration
 	maxActive                int
 	openingConns             int
-	connQueue                []chan connReq
 	waitingCount             int
 	waitingQueue             chan connReq
 }
