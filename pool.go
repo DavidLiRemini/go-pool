@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -13,8 +14,10 @@ var (
 // Pool 基本方法
 type Pool interface {
 	Get() (interface{}, error)
-	
-	GetContext(context.Context)(interface{}, error)
+
+	GetContext(context.Context) (interface{}, error)
+
+	RegisterChecker(interval time.Duration, check func(interface{}) bool)
 
 	Put(interface{}) error
 

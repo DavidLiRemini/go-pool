@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -100,6 +101,52 @@ func (c *channelPool) getConns() chan *idleConn {
 	return conns
 }
 
+func (c *channelPool) RegisterChecker(interval time.Duration, check func(interface{}) bool) {
+	if interval > 0 && check != nil {
+		go func() {
+			for {
+				time.Sleep(interval)
+				c.mu.Lock()
+				if c.conns == nil {
+					// pool aleardy destroyed, exit
+					c.mu.Unlock()
+					return
+				}
+				c.mu.Unlock()
+				l := c.Len()
+				for idx := 0; idx < l; idx++ {
+					select {
+					case i := <-c.conns:
+						if timeout := c.idleTimeout; timeout > 0 {
+							if i.t.Add(timeout).Before(time.Now()) {
+								//丢弃并关闭该连接
+								c.Close(i.conn)
+								continue
+							}
+						}
+						v := i.conn
+						if !check(v) {
+							c.Close(v)
+							continue
+						} else {
+							select {
+							case c.conns <- i:
+								continue
+							default:
+								c.Close(v)
+							}
+						}
+					default:
+						break
+					}
+				}
+				log.Printf("pool size:%d", c.Len())
+			}
+		}()
+
+	}
+}
+
 func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 	conns := c.getConns()
 	if conns == nil {
@@ -137,33 +184,35 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 			return nil, ctx.Err()
 		default:
 			c.mu.Lock()
-			if c.openingConns >= c.maxActive {
-				c.waitingCount++
-				c.mu.Unlock()
-				var ret connReq
-				select {
-				case ret = <-c.waitingQueue:
-				case <-ctx.Done():
-					c.mu.Lock()
-					c.waitingCount--
-					c.mu.Unlock()
-					return nil, ctx.Err()
-				}
-				//不返回错误，暂时注释掉
-				//ret, ok := <-req
-				//if !ok {
-				//	return nil, ErrMaxActiveConnReached
-				//}
+			// FIXME 强制限制连接数逻辑先去掉
+			//if c.openingConns >= c.maxActive {
+			//	log.Printf("openingConns>MaxActive, openingConns:%d, maxActive:%d", c.openingConns, c.maxActive)
+			//	c.waitingCount++
+			//	c.mu.Unlock()
+			//	var ret connReq
+			//	select {
+			//	case ret = <-c.waitingQueue:
+			//	case <-ctx.Done():
+			//		c.mu.Lock()
+			//		c.waitingCount--
+			//		c.mu.Unlock()
+			//		return nil, ctx.Err()
+			//	}
+			//	//不返回错误，暂时注释掉
+			//	//ret, ok := <-req
+			//	//if !ok {
+			//	//	return nil, ErrMaxActiveConnReached
+			//	//}
 
-				if timeout := c.idleTimeout; timeout > 0 {
-					if ret.idleConn.t.Add(timeout).Before(time.Now()) {
-						//丢弃并关闭该连接
-						c.Close(ret.idleConn.conn)
-						continue
-					}
-				}
-				return ret.idleConn.conn, nil
-			}
+			//	if timeout := c.idleTimeout; timeout > 0 {
+			//		if ret.idleConn.t.Add(timeout).Before(time.Now()) {
+			//			//丢弃并关闭该连接
+			//			c.Close(ret.idleConn.conn)
+			//			continue
+			//		}
+			//	}
+			//	return ret.idleConn.conn, nil
+			//}
 			if c.factory == nil {
 				c.mu.Unlock()
 				return nil, ErrClosed
@@ -212,14 +261,15 @@ func (c *channelPool) Put(conn interface{}) error {
 		c.mu.Unlock()
 		return c.Close(conn)
 	}
-	if c.waitingCount > 0 {
-		c.waitingQueue <- connReq{
-			idleConn: &idleConn{conn: conn, t: time.Now()},
-		}
-		c.waitingCount--
-		c.mu.Unlock()
-		return nil
-	} else {
+	//if c.waitingCount > 0 {
+	//	c.waitingQueue <- connReq{
+	//		idleConn: &idleConn{conn: conn, t: time.Now()},
+	//	}
+	//	c.waitingCount--
+	//	c.mu.Unlock()
+	//	return nil
+	//} else
+	{
 		select {
 		case c.conns <- &idleConn{conn: conn, t: time.Now()}:
 			c.mu.Unlock()
