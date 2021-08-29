@@ -106,13 +106,10 @@ func (c *channelPool) RegisterChecker(interval time.Duration, check func(interfa
 		go func() {
 			for {
 				time.Sleep(interval)
-				c.mu.Lock()
 				if c.conns == nil {
 					// pool aleardy destroyed, exit
-					c.mu.Unlock()
 					return
 				}
-				c.mu.Unlock()
 				l := c.Len()
 				for idx := 0; idx < l; idx++ {
 					select {
@@ -148,13 +145,12 @@ func (c *channelPool) RegisterChecker(interval time.Duration, check func(interfa
 }
 
 func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
-	conns := c.getConns()
-	if conns == nil {
+	if c.conns == nil {
 		return nil, ErrClosed
 	}
 	for {
 		select {
-		case wrapConn := <-conns:
+		case wrapConn := <-c.conns:
 			if wrapConn == nil {
 				return nil, ErrClosed
 			}
@@ -255,10 +251,7 @@ func (c *channelPool) Put(conn interface{}) error {
 		return errors.New("connection is nil. rejecting")
 	}
 
-	c.mu.Lock()
-
 	if c.conns == nil {
-		c.mu.Unlock()
 		return c.Close(conn)
 	}
 	//if c.waitingCount > 0 {
@@ -272,10 +265,8 @@ func (c *channelPool) Put(conn interface{}) error {
 	{
 		select {
 		case c.conns <- &idleConn{conn: conn, t: time.Now()}:
-			c.mu.Unlock()
 			return nil
 		default:
-			c.mu.Unlock()
 			//连接池已满，直接关闭该连接
 			return c.Close(conn)
 		}
