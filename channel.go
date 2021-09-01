@@ -45,6 +45,7 @@ type channelPool struct {
 	ping                     func(interface{}) error
 	idleTimeout, waitTimeOut time.Duration
 	maxActive                int
+	minActive                int
 	openingConns             int
 	waitingCount             int
 	waitingQueue             chan connReq
@@ -73,6 +74,7 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 		close:        poolConfig.Close,
 		idleTimeout:  poolConfig.IdleTimeout,
 		maxActive:    poolConfig.MaxPoolSize,
+		minActive:    poolConfig.MinPoolSize,
 		openingConns: poolConfig.MinPoolSize,
 		waitingQueue: make(chan connReq, 1024),
 	}
@@ -134,6 +136,25 @@ func (c *channelPool) RegisterChecker(interval time.Duration, check func(interfa
 							}
 						}
 					default:
+						break
+					}
+				}
+
+				for {
+					c.mu.Lock()
+					conns := c.openingConns
+					c.mu.Unlock()
+					if conns < c.minActive {
+						conn, err := c.Connect()
+						if err == nil {
+							select {
+							case c.conns <- &idleConn{conn: conn, t: time.Now()}:
+							default:
+								break
+							}
+						}
+						conns++
+					} else {
 						break
 					}
 				}
