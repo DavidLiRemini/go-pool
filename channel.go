@@ -9,26 +9,24 @@ import (
 	"time"
 )
 
-var (
-	//ErrMaxActiveConnReached 连接池超限
-	ErrMaxActiveConnReached = errors.New("MaxActiveConnReached")
-)
+// ErrMaxActiveConnReached 连接池超限
+var ErrMaxActiveConnReached = errors.New("MaxActiveConnReached")
 
 // Config 连接池相关配置
 type Config struct {
-	//连接池中拥有的最小连接数
+	// 连接池中拥有的最小连接数
 	MinPoolSize int
-	//最大并发存活连接数
+	// 最大并发存活连接数
 	MaxPoolSize int
-	//最大空闲连接
+	// 最大空闲连接
 	MaxIdle int
-	//生成连接的方法
+	// 生成连接的方法
 	Factory func() (interface{}, error)
-	//关闭连接的方法
+	// 关闭连接的方法
 	Close func(interface{}) error
-	//检查连接是否有效的方法
+	// 检查连接是否有效的方法
 	Ping func(interface{}) error
-	//连接最大空闲时间，超过该事件则将失效
+	// 连接最大空闲时间，超过该事件则将失效
 	IdleTimeout time.Duration
 }
 
@@ -58,7 +56,9 @@ type idleConn struct {
 
 // NewChannelPool 初始化连接
 func NewChannelPool(poolConfig *Config) (Pool, error) {
-	if !(poolConfig.MinPoolSize <= poolConfig.MaxIdle && poolConfig.MaxPoolSize >= poolConfig.MaxIdle && poolConfig.MinPoolSize >= 0) {
+	if !(poolConfig.MinPoolSize <= poolConfig.MaxIdle &&
+		poolConfig.MaxPoolSize >= poolConfig.MaxIdle &&
+		poolConfig.MinPoolSize >= 0) {
 		return nil, errors.New("invalid capacity settings")
 	}
 	if poolConfig.Factory == nil {
@@ -118,7 +118,7 @@ func (c *channelPool) RegisterChecker(interval time.Duration, check func(interfa
 					case i := <-c.conns:
 						if timeout := c.idleTimeout; timeout > 0 {
 							if i.t.Add(timeout).Before(time.Now()) {
-								//丢弃并关闭该连接
+								// 丢弃并关闭该连接
 								c.Close(i.conn)
 								continue
 							}
@@ -136,6 +136,7 @@ func (c *channelPool) RegisterChecker(interval time.Duration, check func(interfa
 							}
 						}
 					default:
+						// 只break了select
 						break
 					}
 				}
@@ -161,7 +162,6 @@ func (c *channelPool) RegisterChecker(interval time.Duration, check func(interfa
 				log.Printf("pool size:%d", c.Len())
 			}
 		}()
-
 	}
 }
 
@@ -181,15 +181,15 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 			case <-ctx.Done():
 				return wrapConn.conn, ctx.Err()
 			}
-			//判断是否超时，超时则丢弃
+			// 判断是否超时，超时则丢弃
 			if timeout := c.idleTimeout; timeout > 0 {
 				if wrapConn.t.Add(timeout).Before(time.Now()) {
-					//丢弃并关闭该连接
+					// 丢弃并关闭该连接
 					c.Close(wrapConn.conn)
 					continue
 				}
 			}
-			//判断是否失效，失效则丢弃，如果用户没有设定 ping 方法，就不检查
+			// 判断是否失效，失效则丢弃，如果用户没有设定 ping 方法，就不检查
 			if c.ping != nil {
 				if err := c.Ping(wrapConn.conn); err != nil {
 					c.Close(wrapConn.conn)
@@ -200,9 +200,8 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
-			c.mu.Lock()
 			// FIXME 强制限制连接数逻辑先去掉
-			//if c.openingConns >= c.maxActive {
+			// if c.openingConns >= c.maxActive {
 			//	log.Printf("openingConns>MaxActive, openingConns:%d, maxActive:%d", c.openingConns, c.maxActive)
 			//	c.waitingCount++
 			//	c.mu.Unlock()
@@ -229,18 +228,11 @@ func (c *channelPool) GetContext(ctx context.Context) (interface{}, error) {
 			//		}
 			//	}
 			//	return ret.idleConn.conn, nil
-			//}
-			if c.factory == nil {
-				c.mu.Unlock()
-				return nil, ErrClosed
-			}
-			conn, err := c.factory()
+			// }
+			conn, err := c.Connect()
 			if err != nil {
-				c.mu.Unlock()
 				return nil, err
 			}
-			c.openingConns++
-			c.mu.Unlock()
 			return conn, nil
 		}
 	}
@@ -275,20 +267,20 @@ func (c *channelPool) Put(conn interface{}) error {
 	if c.conns == nil {
 		return c.Close(conn)
 	}
-	//if c.waitingCount > 0 {
+	// if c.waitingCount > 0 {
 	//	c.waitingQueue <- connReq{
 	//		idleConn: &idleConn{conn: conn, t: time.Now()},
 	//	}
 	//	c.waitingCount--
 	//	c.mu.Unlock()
 	//	return nil
-	//} else
+	// } else
 	{
 		select {
 		case c.conns <- &idleConn{conn: conn, t: time.Now()}:
 			return nil
 		default:
-			//连接池已满，直接关闭该连接
+			// 连接池已满，直接关闭该连接
 			return c.Close(conn)
 		}
 	}

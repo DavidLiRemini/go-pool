@@ -6,10 +6,8 @@ import (
 	"time"
 )
 
-var (
-	//ErrClosed 连接池已经关闭Error
-	ErrClosed = errors.New("pool is closed")
-)
+// ErrClosed 连接池已经关闭Error
+var ErrClosed = errors.New("pool is closed")
 
 // Pool 基本方法
 type Pool interface {
